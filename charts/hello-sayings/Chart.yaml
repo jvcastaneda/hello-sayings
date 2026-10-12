@@ -1,0 +1,7 @@
+apiVersion: v2
+name: hello-sayings
+description: A tiny TypeScript service that returns a random saying on every request
+type: application
+# Overwritten from the git tag (vX.Y.Z) by the release workflow
+version: 0.1.0
+appVersion: "0.1.0"

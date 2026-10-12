@@ -1,0 +1,4 @@
+Get a random saying:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "hello-sayings.fullname" . }} 8080:{{ .Values.service.port }}
+  curl http://localhost:8080/
