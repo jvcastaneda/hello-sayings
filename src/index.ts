@@ -4,13 +4,16 @@ import { randomSaying } from "./sayings.js";
 const PORT = Number(process.env.PORT ?? 3000);
 
 const server = createServer((req, res) => {
-  if (req.method === "GET" && (req.url === "/" || req.url === "/saying")) {
+  // Match on the path only, so query strings like /?x=1 still route
+  const path = new URL(`http://localhost${req.url ?? "/"}`).pathname;
+
+  if (req.method === "GET" && (path === "/" || path === "/saying")) {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ saying: randomSaying() }));
     return;
   }
 
-  if (req.method === "GET" && req.url === "/health") {
+  if (req.method === "GET" && path === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: "ok" }));
     return;
