@@ -10,7 +10,11 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-podAnnotations: {}
+# Annotation-based scrape config for Prometheus setups that use it
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/path: /metrics
+  prometheus.io/port: "3000"
 podLabels: {}
 
 podSecurityContext:

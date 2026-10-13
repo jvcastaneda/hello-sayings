@@ -1,4 +1,13 @@
-Get a random saying:
+Port-forward the service:
 
   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "hello-sayings.fullname" . }} 8080:{{ .Values.service.port }}
-  curl http://localhost:8080/
+
+Then:
+
+  curl http://localhost:8080/                       # random saying
+  curl http://localhost:8080/sayings                # list all
+  curl -X PUT http://localhost:8080/sayings/my-id -d '{"text":"Hello"}'
+  curl -X DELETE http://localhost:8080/sayings/my-id
+  curl http://localhost:8080/metrics                # Prometheus metrics
+
+Sayings are stored in memory per pod: they reset on restart and are not shared across replicas.
