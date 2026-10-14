@@ -1,0 +1,15 @@
+{{- if .Values.metrics.dashboard.enabled -}}
+# Picked up by the Grafana dashboard sidecar (kube-prometheus-stack watches this label)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hello-sayings.fullname" . }}-dashboard
+  labels:
+    {{- include "hello-sayings.labels" . | nindent 4 }}
+    {{- with .Values.metrics.dashboard.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+data:
+  hello-sayings.json: |-
+    {{- .Files.Get "dashboards/hello-sayings.json" | nindent 4 }}
+{{- end }}
