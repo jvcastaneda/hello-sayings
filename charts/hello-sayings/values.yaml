@@ -63,6 +63,14 @@ metrics:
     enabled: false
     labels:
       grafana_dashboard: "1"
+  prometheusRule:
+    # Alerting rules; requires the Prometheus Operator CRDs. Its labels must match
+    # your Prometheus ruleSelector (kube-prometheus-stack: release: <its release name>)
+    enabled: false
+    labels: {}
+    serverErrorRatio: 0.05
+    clientErrorRatio: 0.25
+    p95LatencySeconds: 0.25
 
 nodeSelector: {}
 tolerations: []

@@ -116,7 +116,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_requests_total{namespace=\"$namespace\",status=~\"5..\"}[$__rate_interval])) / sum(rate(http_requests_total{namespace=\"$namespace\"}[$__rate_interval]))",
+          "expr": "(sum(rate(http_requests_total{namespace=\"$namespace\",status=~\"5..\"}[$__rate_interval])) or vector(0)) / sum(rate(http_requests_total{namespace=\"$namespace\"}[$__rate_interval]))",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
