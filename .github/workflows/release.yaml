@@ -88,15 +88,22 @@ jobs:
 
       - name: Bump dev to the new chart version
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          # Exported so yq's strenv() can read it in this step
+          export VERSION="${GITHUB_REF_NAME#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           yq -i '(.spec.sources[] | select(.chart == "hello-sayings")).targetRevision = strenv(VERSION)' \
             deploy/argocd/apps/hello-sayings-dev.yaml
+          # Fail rather than open a PR that deploys the wrong version
+          grep -q "targetRevision: $VERSION$" deploy/argocd/apps/hello-sayings-dev.yaml
           git diff
 
-      # Needs "Allow GitHub Actions to create and approve pull requests" in repo settings
+      # Needs "Allow GitHub Actions to create and approve pull requests" in repo settings.
+      # PRs opened with the default GITHUB_TOKEN don't trigger CI, so required checks
+      # never report; set a DEPLOY_PR_TOKEN secret (fine-grained PAT: contents and
+      # pull requests read/write on this repo) to get checks on deploy PRs.
       - uses: peter-evans/create-pull-request@v7
         with:
+          token: ${{ secrets.DEPLOY_PR_TOKEN || github.token }}
           branch: deploy/dev-${{ env.VERSION }}
           commit-message: "Deploy ${{ env.VERSION }} to dev"
           title: "Deploy ${{ env.VERSION }} to dev"
