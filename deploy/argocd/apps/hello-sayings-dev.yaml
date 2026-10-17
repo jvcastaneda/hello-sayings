@@ -14,7 +14,7 @@ spec:
     # The released chart; the release workflow opens a PR to bump this
     - repoURL: ghcr.io/jvcastaneda/charts
       chart: hello-sayings
-      targetRevision: 0.0.3
+      targetRevision: ""
       helm:
         releaseName: hello-sayings
         valueFiles:
