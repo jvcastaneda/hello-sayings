@@ -1,0 +1,23 @@
+# Keeps dependencies current via weekly PRs, which go through the same CI and
+# Terraform plan checks as any other change
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      aws-sdk:
+        patterns: ["@aws-sdk/*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: terraform
+    directories: ["/infra/bootstrap", "/infra/envs/*"]
+    schedule:
+      interval: weekly

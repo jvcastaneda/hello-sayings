@@ -1,0 +1,19 @@
+# Values for the dev environment (minikube). Argo CD applies these on top of the
+# chart defaults; change them with a PR.
+
+dynamodb:
+  # Created by infra/envs/dev
+  table: hello-sayings-dev
+
+aws:
+  region: us-west-1
+  # Created by scripts/rotate-app-key.sh, never committed
+  existingSecret: hello-sayings-aws
+
+metrics:
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: prometheus
+  dashboard:
+    enabled: true

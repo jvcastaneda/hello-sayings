@@ -36,6 +36,24 @@ spec:
           env:
             - name: PORT
               value: {{ .Values.containerPort | quote }}
+            {{- with .Values.dynamodb.table }}
+            - name: SAYINGS_TABLE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.dynamodb.endpoint }}
+            - name: DYNAMODB_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.aws.region }}
+            - name: AWS_REGION
+              value: {{ . | quote }}
+            {{- end }}
+          {{- with .Values.aws.existingSecret }}
+          # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY, created outside the chart
+          envFrom:
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.containerPort }}
@@ -44,10 +62,13 @@ spec:
             httpGet:
               path: /health
               port: http
+          # Not ready while the store is unreachable: traffic stops, but the pod isn't restarted
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

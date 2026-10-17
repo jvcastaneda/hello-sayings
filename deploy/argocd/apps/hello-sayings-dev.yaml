@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hello-sayings-dev
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: hello-sayings
+  sources:
+    # The released chart; the release workflow opens a PR to bump this
+    - repoURL: ghcr.io/jvcastaneda/charts
+      chart: hello-sayings
+      targetRevision: 0.0.3
+      helm:
+        releaseName: hello-sayings
+        valueFiles:
+          - $values/deploy/environments/dev/values.yaml
+    # Environment values, from git
+    - repoURL: https://github.com/jvcastaneda/hello-sayings.git
+      targetRevision: main
+      ref: values
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+  # scripts/rotate-app-key.sh restarts pods with `kubectl rollout restart`;
+  # don't let self-heal revert that
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt

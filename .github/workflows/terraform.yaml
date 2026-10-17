@@ -1,0 +1,141 @@
+name: Terraform
+
+# PRs: fmt/validate, then plan each environment with the read-only role and post
+# it on the PR. Merges to main: plan + apply with the apply role, behind the
+# `production` environment's required reviewers.
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  AWS_REGION: us-west-1
+  TF_VAR_app_permissions_boundary_arn: ${{ vars.APP_PERMISSIONS_BOUNDARY_ARN }}
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.15"
+      - run: terraform fmt -check -recursive -diff infra
+      - name: Validate
+        run: |
+          for dir in infra/bootstrap infra/envs/*/; do
+            echo "::group::$dir"
+            terraform -chdir="$dir" init -backend=false
+            terraform -chdir="$dir" validate
+            echo "::endgroup::"
+          done
+
+  plan:
+    if: github.event_name == 'pull_request'
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    strategy:
+      matrix:
+        environment: [dev]
+    concurrency:
+      group: terraform-plan-${{ matrix.environment }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: infra/envs/${{ matrix.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.15"
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+      - name: Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -no-color -detailed-exitcode -out=tfplan > plan.txt 2>&1
+          code=$?
+          cat plan.txt
+          # 0 = no changes, 2 = changes, anything else is a failure
+          echo "exitcode=$code" >> "$GITHUB_OUTPUT"
+          [ "$code" -eq 0 ] || [ "$code" -eq 2 ]
+      - name: Comment plan on PR
+        if: always() && steps.plan.outcome != 'skipped'
+        uses: actions/github-script@v7
+        env:
+          ENVIRONMENT: ${{ matrix.environment }}
+          EXITCODE: ${{ steps.plan.outputs.exitcode }}
+        with:
+          script: |
+            const fs = require("fs");
+            const env = process.env.ENVIRONMENT;
+            const code = process.env.EXITCODE;
+            let plan = fs.readFileSync(`infra/envs/${env}/plan.txt`, "utf8");
+            if (plan.length > 60000) plan = "...(truncated)\n" + plan.slice(-60000);
+            const status = code === "0" ? "No changes" : code === "2" ? "Changes" : "**Plan failed**";
+            const marker = `<!-- terraform-plan-${env} -->`;
+            const body = `${marker}\n### Terraform plan: \`${env}\` (${status})\n\n<details><summary>Show plan</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>\n\n_Commit ${context.sha.slice(0, 7)}; applied after merge to main._`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find((c) => c.body?.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+  apply:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: checks
+    runs-on: ubuntu-latest
+    # Required reviewers on this environment gate every apply
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      max-parallel: 1
+      matrix:
+        environment: [dev]
+    # Never cancel an apply halfway; queue them instead
+    concurrency:
+      group: terraform-apply-${{ matrix.environment }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: infra/envs/${{ matrix.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.15"
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+      - run: terraform plan -no-color -out=tfplan
+      - run: terraform apply -no-color tfplan
