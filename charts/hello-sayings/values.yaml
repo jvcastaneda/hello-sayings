@@ -33,6 +33,19 @@ service:
 
 containerPort: 3000
 
+# Storage. With no table set, the app uses its in-memory store (dev only)
+dynamodb:
+  table: ""
+  # Override for DynamoDB Local, e.g. http://dynamodb-local:8000
+  endpoint: ""
+
+aws:
+  region: ""
+  # Secret holding AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, created outside
+  # the chart (scripts/rotate-app-key.sh). Leave empty when credentials come from
+  # elsewhere, e.g. IRSA / EKS Pod Identity via serviceAccount annotations.
+  existingSecret: ""
+
 ingress:
   enabled: false
   className: ""
@@ -64,10 +77,12 @@ metrics:
     labels:
       grafana_dashboard: "1"
   prometheusRule:
-    # Alerting rules; requires the Prometheus Operator CRDs. Its labels must match
-    # your Prometheus ruleSelector (kube-prometheus-stack: release: <its release name>)
-    enabled: false
-    labels: {}
+    # Alerting rules; skipped automatically if the Prometheus Operator CRDs are not
+    # installed. Its labels must match your Prometheus ruleSelector
+    # (kube-prometheus-stack: release: <its release name>)
+    enabled: true
+    labels:
+      release: prometheus
     serverErrorRatio: 0.05
     clientErrorRatio: 0.25
     p95LatencySeconds: 0.25

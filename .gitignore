@@ -1,2 +1,7 @@
 node_modules
 dist
+dist-test
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan

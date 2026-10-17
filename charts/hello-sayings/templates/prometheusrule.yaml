@@ -1,8 +1,8 @@
-{{- if .Values.metrics.prometheusRule.enabled -}}
+{{- if and .Values.metrics.prometheusRule.enabled (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/PrometheusRule") -}}
 {{- $sel := printf "namespace=%q, service=%q" .Release.Namespace (include "hello-sayings.fullname" .) -}}
 {{- $rules := .Values.metrics.prometheusRule -}}
-# Requires the Prometheus Operator CRDs. Its labels must match your Prometheus
-# ruleSelector (kube-prometheus-stack: release: <its release name>)
+# Only rendered when the Prometheus Operator CRDs are installed. Its labels must
+# match your Prometheus ruleSelector (kube-prometheus-stack: release: <its release name>)
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:

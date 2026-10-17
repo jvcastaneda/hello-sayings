@@ -1,0 +1,13 @@
+# Registers the public GHCR chart registry with Argo CD (no credentials needed)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ghcr-charts
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  name: ghcr-charts
+  type: helm
+  url: ghcr.io/jvcastaneda/charts
+  enableOCI: "true"

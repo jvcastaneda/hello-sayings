@@ -1,0 +1,20 @@
+# App of apps: Argo CD manages everything under deploy/argocd/apps from git.
+# Applied once by scripts/bootstrap-argocd.sh; everything after is a PR.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jvcastaneda/hello-sayings.git
+    targetRevision: main
+    path: deploy/argocd/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
