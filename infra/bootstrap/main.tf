@@ -90,8 +90,8 @@ resource "aws_iam_openid_connect_provider" "github" {
 # Trust is pinned to this repo plus one `sub` pattern per role
 data "aws_iam_policy_document" "github_trust" {
   for_each = {
-    plan  = "repo:${var.github_repo}:pull_request"
-    apply = "repo:${var.github_repo}:environment:production"
+    plan  = "${var.github_oidc_subject_prefix}:pull_request"
+    apply = "${var.github_oidc_subject_prefix}:environment:production"
   }
 
   statement {
