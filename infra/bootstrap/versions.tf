@@ -8,14 +8,15 @@ terraform {
     }
   }
 
-  # First apply runs with local state; then uncomment and migrate it into the
-  # bucket this stack creates (see infra/README.md)
-  # backend "s3" {
-  #   key          = "bootstrap/terraform.tfstate"
-  #   region       = "us-west-1"
-  #   use_lockfile = true
-  #   encrypt      = true
-  # }
+  # Lives in the bucket this stack creates. On a fresh account: comment this
+  # out, apply with local state, uncomment, then
+  #   terraform init -migrate-state -backend-config="bucket=<state_bucket output>"
+  backend "s3" {
+    key          = "bootstrap/terraform.tfstate"
+    region       = "us-west-1"
+    use_lockfile = true
+    encrypt      = true
+  }
 }
 
 provider "aws" {
