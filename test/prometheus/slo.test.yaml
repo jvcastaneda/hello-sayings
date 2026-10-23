@@ -1,0 +1,154 @@
+# Unit tests for the SLO burn-rate alerts, run by scripts/test-alert-rules.sh against
+# the rules the chart renders for dev (availability 99.5%, latency 98% < 250ms).
+# Traffic is per minute: '0+90x60' is a counter growing by 90 each minute for 60m.
+rule_files:
+  - .generated/*.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 0.2% errors is inside the 0.5% budget: no alerts, and 60% of the budget left
+  - name: healthy traffic burns budget slowly and never alerts
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{namespace="hello-sayings", service="hello-sayings", route="/", status="200"}'
+        values: '0+998x240'
+      - series: 'http_requests_total{namespace="hello-sayings", service="hello-sayings", route="/", status="500"}'
+        values: '0+2x240'
+    alert_rule_test:
+      - { eval_time: 4h, alertname: HelloSayingsErrorBudgetBurn, exp_alerts: [] }
+    promql_expr_test:
+      - expr: round(slo:error_budget_remaining:ratio{slo="availability"}, 0.001)
+        eval_time: 4h
+        exp_samples:
+          - labels: '{slo="availability", namespace="hello-sayings", service="hello-sayings", window="7d"}'
+            value: 0.6
+
+  # 10% errors is 20x the budget: every tier fires
+  - name: fast burn pages
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{namespace="hello-sayings", service="hello-sayings", route="/sayings/:id", status="200"}'
+        values: '0+90x60'
+      - series: 'http_requests_total{namespace="hello-sayings", service="hello-sayings", route="/sayings/:id", status="500"}'
+        values: '0+10x60'
+    alert_rule_test:
+      # Not yet: the condition must hold for `for: 2m`
+      - { eval_time: 1m, alertname: HelloSayingsErrorBudgetBurn, exp_alerts: [] }
+      - eval_time: 30m
+        alertname: HelloSayingsErrorBudgetBurn
+        exp_alerts:
+          - exp_labels: { severity: critical, slo: availability, long_window: 1h, short_window: 5m, namespace: hello-sayings, service: hello-sayings }
+            exp_annotations:
+              summary: "hello-sayings is burning its availability error budget 14.4x too fast"
+              description: "10% of requests failed the availability SLI over the last 1h (budget: 0.5% of requests). At this rate the 7d error budget lasts 11.7h."
+          - exp_labels: { severity: critical, slo: availability, long_window: 6h, short_window: 30m, namespace: hello-sayings, service: hello-sayings }
+            exp_annotations:
+              summary: "hello-sayings is burning its availability error budget 6x too fast"
+              description: "10% of requests failed the availability SLI over the last 6h (budget: 0.5% of requests). At this rate the 7d error budget lasts 28.0h."
+          - exp_labels: { severity: warning, slo: availability, long_window: 1d, short_window: 2h, namespace: hello-sayings, service: hello-sayings }
+            exp_annotations:
+              summary: "hello-sayings is burning its availability error budget 3x too fast"
+              description: "10% of requests failed the availability SLI over the last 1d (budget: 0.5% of requests). At this rate the 7d error budget lasts 56.0h."
+          - exp_labels: { severity: warning, slo: availability, long_window: 3d, short_window: 6h, namespace: hello-sayings, service: hello-sayings }
+            exp_annotations:
+              summary: "hello-sayings is burning its availability error budget 1x too fast"
+              description: "10% of requests failed the availability SLI over the last 3d (budget: 0.5% of requests). At this rate the 7d error budget lasts 168.0h."
+
+  # The short windows let alerts resolve soon after the errors stop, even though the
+  # long windows still remember them
+  - name: alerts resolve as soon as the burn stops
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{namespace="hello-sayings", service="hello-sayings", route="/", status="200"}'
+        values: '0+90x60 5400+100x60'
+      - series: 'http_requests_total{namespace="hello-sayings", service="hello-sayings", route="/", status="500"}'
+        values: '0+10x60 600+0x60'
+    alert_rule_test:
+      # 40m after recovery: the 5m and 30m windows are clean, so both pages are gone.
+      # The 2h and 6h windows still see the incident, so the tickets stay open.
+      - eval_time: 100m
+        alertname: HelloSayingsErrorBudgetBurn
+        exp_alerts:
+          - exp_labels: { severity: warning, slo: availability, long_window: 1d, short_window: 2h, namespace: hello-sayings, service: hello-sayings }
+            exp_annotations:
+              summary: "hello-sayings is burning its availability error budget 3x too fast"
+              description: "6.061% of requests failed the availability SLI over the last 1d (budget: 0.5% of requests). At this rate the 7d error budget lasts 56.0h."
+          - exp_labels: { severity: warning, slo: availability, long_window: 3d, short_window: 6h, namespace: hello-sayings, service: hello-sayings }
+            exp_annotations:
+              summary: "hello-sayings is burning its availability error budget 1x too fast"
+              description: "6.061% of requests failed the availability SLI over the last 3d (budget: 0.5% of requests). At this rate the 7d error budget lasts 168.0h."
+
+  # 4% errors is 8x the budget: above the 6x page, below the 14.4x one
+  - name: slower burn pages on the 6h tier only
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{namespace="hello-sayings", service="hello-sayings", route="/", status="200"}'
+        values: '0+96x60'
+      - series: 'http_requests_total{namespace="hello-sayings", service="hello-sayings", route="/", status="503"}'
+        values: '0+4x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: HelloSayingsErrorBudgetBurn
+        exp_alerts:
+          - exp_labels: { severity: critical, slo: availability, long_window: 6h, short_window: 30m, namespace: hello-sayings, service: hello-sayings }
+            exp_annotations:
+              summary: "hello-sayings is burning its availability error budget 6x too fast"
+              description: "4% of requests failed the availability SLI over the last 6h (budget: 0.5% of requests). At this rate the 7d error budget lasts 28.0h."
+          - exp_labels: { severity: warning, slo: availability, long_window: 1d, short_window: 2h, namespace: hello-sayings, service: hello-sayings }
+            exp_annotations:
+              summary: "hello-sayings is burning its availability error budget 3x too fast"
+              description: "4% of requests failed the availability SLI over the last 1d (budget: 0.5% of requests). At this rate the 7d error budget lasts 56.0h."
+          - exp_labels: { severity: warning, slo: availability, long_window: 3d, short_window: 6h, namespace: hello-sayings, service: hello-sayings }
+            exp_annotations:
+              summary: "hello-sayings is burning its availability error budget 1x too fast"
+              description: "4% of requests failed the availability SLI over the last 3d (budget: 0.5% of requests). At this rate the 7d error budget lasts 168.0h."
+
+  # Half the requests slower than 250ms: the latency SLO fires, availability doesn't
+  - name: slow requests burn the latency budget
+    interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_count{namespace="hello-sayings", service="hello-sayings", route="/sayings", method="GET", status="200"}'
+        values: '0+100x60'
+      - series: 'http_request_duration_seconds_bucket{namespace="hello-sayings", service="hello-sayings", route="/sayings", method="GET", status="200", le="0.25"}'
+        values: '0+50x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: HelloSayingsErrorBudgetBurn
+        exp_alerts:
+          - exp_labels: { severity: critical, slo: latency, long_window: 1h, short_window: 5m, namespace: hello-sayings, service: hello-sayings }
+            exp_annotations:
+              summary: "hello-sayings is burning its latency error budget 14.4x too fast"
+              description: "50% of requests failed the latency SLI over the last 1h (budget: 2% of requests). At this rate the 7d error budget lasts 11.7h."
+          - exp_labels: { severity: critical, slo: latency, long_window: 6h, short_window: 30m, namespace: hello-sayings, service: hello-sayings }
+            exp_annotations:
+              summary: "hello-sayings is burning its latency error budget 6x too fast"
+              description: "50% of requests failed the latency SLI over the last 6h (budget: 2% of requests). At this rate the 7d error budget lasts 28.0h."
+          - exp_labels: { severity: warning, slo: latency, long_window: 1d, short_window: 2h, namespace: hello-sayings, service: hello-sayings }
+            exp_annotations:
+              summary: "hello-sayings is burning its latency error budget 3x too fast"
+              description: "50% of requests failed the latency SLI over the last 1d (budget: 2% of requests). At this rate the 7d error budget lasts 56.0h."
+          - exp_labels: { severity: warning, slo: latency, long_window: 3d, short_window: 6h, namespace: hello-sayings, service: hello-sayings }
+            exp_annotations:
+              summary: "hello-sayings is burning its latency error budget 1x too fast"
+              description: "50% of requests failed the latency SLI over the last 3d (budget: 2% of requests). At this rate the 7d error budget lasts 168.0h."
+
+  # A failing readiness probe (503 on /ready) isn't user traffic and mustn't burn budget
+  - name: probe failures are excluded
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{namespace="hello-sayings", service="hello-sayings", route="/ready", status="503"}'
+        values: '0+6x60'
+      - series: 'http_requests_total{namespace="hello-sayings", service="hello-sayings", route="/", status="200"}'
+        values: '0+100x60'
+    alert_rule_test:
+      - { eval_time: 30m, alertname: HelloSayingsErrorBudgetBurn, exp_alerts: [] }
+
+  # No user traffic at all (the normal state in dev between load tests)
+  - name: no traffic means no alerts
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{namespace="hello-sayings", service="hello-sayings", route="/health", status="200"}'
+        values: '0+6x60'
+    alert_rule_test:
+      - { eval_time: 30m, alertname: HelloSayingsErrorBudgetBurn, exp_alerts: [] }

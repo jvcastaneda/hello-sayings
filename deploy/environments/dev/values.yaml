@@ -17,3 +17,7 @@ metrics:
       release: prometheus
   dashboard:
     enabled: true
+  slo:
+    # Prometheus here keeps 10d on an emptyDir, so a 30d budget can't be measured.
+    # Raise retention and add a persistent volume before lengthening this.
+    window: 7d

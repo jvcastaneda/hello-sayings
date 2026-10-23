@@ -5,3 +5,4 @@ dist-test
 *.tfstate
 *.tfstate.*
 *.tfplan
+test/prometheus/.generated
