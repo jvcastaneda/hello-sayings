@@ -18,13 +18,15 @@ GET    /metrics          Prometheus metrics
 | Path | What |
 |---|---|
 | `src/`, `test/` | The app and its tests |
-| `charts/hello-sayings/` | Helm chart (incl. ServiceMonitor, PrometheusRule, Grafana dashboard) |
+| `charts/hello-sayings/` | Helm chart (incl. ServiceMonitor, alert and SLO rules, Grafana dashboards) |
 | `infra/bootstrap/` | One-time, admin-applied: Terraform state bucket, GitHub OIDC, CI roles |
 | `infra/modules/hello-sayings/` | DynamoDB table + the app's least-privilege IAM user |
 | `infra/envs/dev/` | The dev environment (one directory per environment) |
 | `deploy/argocd/` | Argo CD applications (app of apps) |
 | `deploy/environments/dev/values.yaml` | Helm values for dev |
-| `scripts/` | Argo CD bootstrap and app key rotation |
+| `scripts/` | Argo CD bootstrap, app key rotation, alert rule tests |
+| `test/prometheus/` | promtool unit tests for the SLO burn-rate alerts |
+| `SLO.md` | SLIs, SLOs, burn-rate alerting, error budget policy |
 
 ## How changes flow
 
@@ -33,7 +35,7 @@ Everything goes through a pull request to `main`:
 | Change | On the PR | After merge |
 |---|---|---|
 | App code (`src/`) | Typecheck, tests (incl. DynamoDB Local), image build | Tag `vX.Y.Z` to release it (below) |
-| Chart (`charts/`) | `helm lint` + render with dev values | Ships with the next release |
+| Chart (`charts/`) | `helm lint` + render with dev values; promtool lints the rules and runs the alert unit tests | Ships with the next release |
 | Infrastructure (`infra/`) | `fmt`, `validate`, `plan` posted as a PR comment | `apply`, after approval on the `production` environment |
 | Dev config (`deploy/`) | Chart render with dev values | Argo CD syncs it within ~3 min |
 
@@ -78,7 +80,8 @@ Everything goes through a pull request to `main`:
 - **Rotate the app key:** run `scripts/rotate-app-key.sh`. It creates a new key, rolls the pods onto it, confirms they pass readiness (which hits DynamoDB), and only then deletes the old key.
 - **Run locally:** `npm run build && npm start` uses the in-memory store. Point it at DynamoDB Local with
   `docker run -p 8000:8000 amazon/dynamodb-local` and `SAYINGS_TABLE=... DYNAMODB_ENDPOINT=http://localhost:8000`.
-- **Tests:** `npm test`. Set `DYNAMODB_ENDPOINT` to also run the DynamoDB store tests.
+- **Tests:** `npm test`. Set `DYNAMODB_ENDPOINT` to also run the DynamoDB store tests. `scripts/test-alert-rules.sh` runs the alert unit tests (needs Docker).
+- **SLOs:** see [SLO.md](SLO.md) and the *hello-sayings SLOs* Grafana dashboard.
 
 ## Costs
 

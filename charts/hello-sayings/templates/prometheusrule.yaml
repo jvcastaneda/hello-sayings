@@ -15,6 +15,8 @@ metadata:
 spec:
   groups:
     - name: hello-sayings
+      # Error rates and latency are covered by the SLO burn-rate alerts
+      # (prometheusrule-slo.yaml); these catch what SLOs don't
       rules:
         # absent() also fires when every pod is gone (e.g. scaled to 0)
         - alert: HelloSayingsDown
@@ -26,16 +28,6 @@ spec:
             summary: "hello-sayings has no healthy scrape targets"
             description: "Prometheus has not successfully scraped {{ include "hello-sayings.fullname" . }} in {{ .Release.Namespace }} for 1 minute."
 
-        - alert: HelloSayingsHighServerErrorRate
-          expr: |
-            sum(rate(http_requests_total{ {{- $sel -}}, status=~"5.."}[2m]))
-              / sum(rate(http_requests_total{ {{- $sel -}} }[2m])) > {{ $rules.serverErrorRatio }}
-          for: 2m
-          labels:
-            severity: critical
-          annotations:
-            summary: "hello-sayings 5xx ratio is high"
-            description: "{{`{{ $value | humanizePercentage }}`}} of requests are failing with 5xx (threshold {{ $rules.serverErrorRatio }})."
 
         - alert: HelloSayingsHighClientErrorRate
           expr: |
@@ -48,16 +40,6 @@ spec:
             summary: "hello-sayings 4xx ratio is high"
             description: "{{`{{ $value | humanizePercentage }}`}} of requests are 4xx (threshold {{ $rules.clientErrorRatio }}). Clients may be sending bad requests."
 
-        - alert: HelloSayingsHighLatency
-          expr: |
-            histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{ {{- $sel -}} }[2m])))
-              > {{ $rules.p95LatencySeconds }}
-          for: 3m
-          labels:
-            severity: warning
-          annotations:
-            summary: "hello-sayings p95 latency is high"
-            description: "p95 latency is {{`{{ $value | humanizeDuration }}`}} (threshold {{ $rules.p95LatencySeconds }}s)."
 
         # Catches crashes and OOM kills; needs kube-state-metrics
         - alert: HelloSayingsRestarting

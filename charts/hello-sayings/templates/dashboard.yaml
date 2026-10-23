@@ -12,4 +12,8 @@ metadata:
 data:
   hello-sayings.json: |-
     {{- .Files.Get "dashboards/hello-sayings.json" | nindent 4 }}
+  {{- if .Values.metrics.slo.enabled }}
+  hello-sayings-slo.json: |-
+    {{- .Files.Get "dashboards/hello-sayings-slo.json" | nindent 4 }}
+  {{- end }}
 {{- end }}

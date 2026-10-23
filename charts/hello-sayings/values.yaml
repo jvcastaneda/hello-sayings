@@ -83,9 +83,29 @@ metrics:
     enabled: true
     labels:
       release: prometheus
-    serverErrorRatio: 0.05
     clientErrorRatio: 0.25
-    p95LatencySeconds: 0.25
+  # SLIs, SLOs, and error budget burn-rate alerts (see SLO.md). Rendered into
+  # their own PrometheusRule, which uses the prometheusRule labels above.
+  slo:
+    enabled: true
+    # Error budget period. Must not exceed Prometheus retention.
+    window: 30d
+    availability:
+      # Share of requests (excluding probes and scrapes) that don't return 5xx
+      objective: 0.995
+    latency:
+      # Share of requests (excluding probes and scrapes) served within thresholdSeconds
+      objective: 0.98
+      # Must be one of the app's histogram buckets: 0.001 0.005 0.01 0.025 0.05 0.1 0.25 0.5 1
+      thresholdSeconds: 0.25
+    # Multi-window, multi-burn-rate alerts (Google SRE workbook, "Alerting on SLOs").
+    # Fires when the error ratio exceeds burnRate x the budget over both windows: the
+    # long window proves it's significant, the short one that it's still happening.
+    burnRateAlerts:
+      - { severity: critical, longWindow: 1h, shortWindow: 5m, burnRate: 14.4, for: 2m }
+      - { severity: critical, longWindow: 6h, shortWindow: 30m, burnRate: 6, for: 2m }
+      - { severity: warning, longWindow: 1d, shortWindow: 2h, burnRate: 3, for: 5m }
+      - { severity: warning, longWindow: 3d, shortWindow: 6h, burnRate: 1, for: 5m }
 
 nodeSelector: {}
 tolerations: []

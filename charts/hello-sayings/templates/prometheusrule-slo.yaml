@@ -1,0 +1,106 @@
+{{- $slo := .Values.metrics.slo -}}
+{{- if and .Values.metrics.prometheusRule.enabled $slo.enabled (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/PrometheusRule") -}}
+{{- $buckets := list "0.001" "0.005" "0.01" "0.025" "0.05" "0.1" "0.25" "0.5" "1" -}}
+{{- if not (has (toString $slo.latency.thresholdSeconds) $buckets) -}}
+{{- fail (printf "metrics.slo.latency.thresholdSeconds must be one of the histogram buckets %v" $buckets) -}}
+{{- end -}}
+{{- $name := include "hello-sayings.fullname" . -}}
+{{- $target := printf "namespace=%q, service=%q" .Release.Namespace $name -}}
+{{- /* Probe and scrape traffic says nothing about what users experience */ -}}
+{{- $sel := printf "%s, route!~\"/health|/ready|/metrics\"" $target -}}
+{{- $windows := list -}}
+{{- range $slo.burnRateAlerts -}}
+{{- $windows = append $windows .longWindow -}}
+{{- $windows = append $windows .shortWindow -}}
+{{- end -}}
+{{- $windows = $windows | uniq -}}
+{{- $windowHours := mul (regexFind "[0-9]+" $slo.window | atoi) (ternary 24 1 (hasSuffix "d" $slo.window)) -}}
+{{- $sli := dict
+  "availability" (dict
+    "objective" $slo.availability.objective
+    "description" "requests that don't return 5xx"
+    "errors" (printf "(sum(rate(http_requests_total{%s, status=~\"5..\"}[WINDOW])) or vector(0))" $sel)
+    "total" (printf "sum(rate(http_requests_total{%s}[WINDOW]))" $sel))
+  "latency" (dict
+    "objective" $slo.latency.objective
+    "description" (printf "requests served within %vs" $slo.latency.thresholdSeconds)
+    "errors" (printf "(sum(rate(http_request_duration_seconds_count{%s}[WINDOW])) - sum(rate(http_request_duration_seconds_bucket{%s, le=\"%v\"}[WINDOW])))" $sel $sel $slo.latency.thresholdSeconds)
+    "total" (printf "sum(rate(http_request_duration_seconds_count{%s}[WINDOW]))" $sel))
+-}}
+# SLIs, SLOs, and multi-window multi-burn-rate alerts; see SLO.md
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ $name }}-slo
+  labels:
+    {{- include "hello-sayings.labels" . | nindent 4 }}
+    {{- with .Values.metrics.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    {{- range $id := keys $sli | sortAlpha }}
+    {{- $s := get $sli $id }}
+    {{- $labels := printf "slo: %s\n            namespace: %s\n            service: %s" $id $.Release.Namespace $name }}
+    {{- $match := printf "slo=%q, namespace=%q, service=%q" $id $.Release.Namespace $name }}
+    {{- $budget := round (subf 1 $s.objective) 6 }}
+
+    # --- {{ $id }}: {{ $s.objective }} of {{ $s.description }} over {{ $slo.window }}
+    - name: {{ $name }}-slo-{{ $id }}
+      rules:
+        # Error ratio (bad / total requests) over each alerting window
+        {{- range $w := $windows }}
+        - record: slo:sli_error:ratio_rate{{ $w }}
+          expr: {{ replace "WINDOW" $w $s.errors }} / {{ replace "WINDOW" $w $s.total }}
+          labels:
+            {{ $labels }}
+        {{- end }}
+        - record: slo:objective:ratio
+          expr: vector({{ $s.objective }})
+          labels:
+            {{ $labels }}
+        - record: slo:error_budget:ratio
+          expr: vector({{ $budget }})
+          labels:
+            {{ $labels }}
+        # Alerts live in the same group as the ratios they read: rules within a group
+        # evaluate in order, so they always see this evaluation's values
+        {{- range $a := $slo.burnRateAlerts }}
+        {{- $threshold := round (mulf $a.burnRate $budget) 6 }}
+        - alert: HelloSayingsErrorBudgetBurn
+          expr: |
+            slo:sli_error:ratio_rate{{ $a.longWindow }}{ {{- $match -}} } > {{ $threshold }}
+            and
+            slo:sli_error:ratio_rate{{ $a.shortWindow }}{ {{- $match -}} } > {{ $threshold }}
+          for: {{ $a.for }}
+          labels:
+            severity: {{ $a.severity }}
+            slo: {{ $id }}
+            long_window: {{ $a.longWindow }}
+            short_window: {{ $a.shortWindow }}
+          annotations:
+            summary: "{{ $name }} is burning its {{ $id }} error budget {{ $a.burnRate }}x too fast"
+            description: >-
+              {{`{{ $value | humanizePercentage }}`}} of requests failed the {{ $id }} SLI over the
+              last {{ $a.longWindow }} (budget: {{ round (mulf $budget 100) 4 }}% of requests). At this
+              rate the {{ $slo.window }} error budget lasts {{ printf "%.1f" (divf $windowHours $a.burnRate) }}h.
+        {{- end }}
+
+    # The whole budget period scans the most data, so it's evaluated less often
+    - name: {{ $name }}-slo-{{ $id }}-period
+      interval: 5m
+      rules:
+        - record: slo:sli_error:ratio_period
+          expr: {{ replace "WINDOW" $slo.window $s.errors }} / {{ replace "WINDOW" $slo.window $s.total }}
+          labels:
+            {{ $labels }}
+            window: {{ $slo.window }}
+        # 1 = untouched, 0 = spent, negative = SLO breached
+        - record: slo:error_budget_remaining:ratio
+          expr: 1 - (slo:sli_error:ratio_period{ {{- $match -}} } / {{ $budget }})
+          labels:
+            slo: {{ $id }}
+            window: {{ $slo.window }}
+
+    {{- end }}
+{{- end }}
