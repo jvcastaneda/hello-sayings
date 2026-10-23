@@ -101,7 +101,7 @@ jobs:
       # PRs opened with the default GITHUB_TOKEN don't trigger CI, so required checks
       # never report; set a DEPLOY_PR_TOKEN secret (fine-grained PAT: contents and
       # pull requests read/write on this repo) to get checks on deploy PRs.
-      - uses: peter-evans/create-pull-request@v7
+      - uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.DEPLOY_PR_TOKEN || github.token }}
           branch: deploy/dev-${{ env.VERSION }}
