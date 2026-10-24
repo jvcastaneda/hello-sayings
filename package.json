@@ -15,8 +15,8 @@
     "typescript": "^5.9.0"
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.1152.0",
-    "@aws-sdk/lib-dynamodb": "^3.1152.0",
+    "@aws-sdk/client-dynamodb": "^3.1154.0",
+    "@aws-sdk/lib-dynamodb": "^3.1154.0",
     "prom-client": "^15.1.3"
   }
 }
