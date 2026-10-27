@@ -82,7 +82,7 @@ jobs:
           [ "$code" -eq 0 ] || [ "$code" -eq 2 ]
       - name: Comment plan on PR
         if: always() && steps.plan.outcome != 'skipped'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           ENVIRONMENT: ${{ matrix.environment }}
           EXITCODE: ${{ steps.plan.outputs.exitcode }}
